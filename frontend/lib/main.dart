@@ -6,6 +6,8 @@ void main() {
 }
 
 class SpeechConnectApp extends StatelessWidget {
+  const SpeechConnectApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
