@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/controllers/stt_controller.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
@@ -11,15 +12,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final STTController _sttController = STTController();
+  String _spokenText = '';
 
   String selectedInputLang = "English";
   String selectedOutputLang = "Hindi";
 
-  final List<String> languages = ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali'];
+  final List<String> languages = [
+    'English',
+    'Hindi',
+    'Tamil',
+    'Telugu',
+    'Bengali',
+  ];
 
-  List<String> chatMessages = [];
+  List<Map<String, dynamic>> chatMessages = []; // {text: '', isUser: true, time: ''}
 
-  // Timer
   late Timer _callTimer;
   int _seconds = 0;
 
@@ -27,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _startCallTimer();
+    _sttController.initialize();
   }
 
   void _startCallTimer() {
@@ -46,7 +55,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _sendMessage() {
     if (_textController.text.trim().isNotEmpty) {
       setState(() {
-        chatMessages.add(_textController.text.trim());
+        chatMessages.add({
+          'text': _textController.text.trim(),
+          'isUser': true,
+          'time': TimeOfDay.now().format(context),
+        });
         _textController.clear();
       });
 
@@ -76,52 +89,44 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
-  return Theme(
-    data: Theme.of(context).copyWith(
-      canvasColor: Colors.white,
-      dropdownMenuTheme: DropdownMenuThemeData(
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+  Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        canvasColor: Colors.white,
+        dropdownMenuTheme: DropdownMenuThemeData(
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
           ),
-        ),
-        menuStyle: MenuStyle(
-          shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+          menuStyle: MenuStyle(
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),
         ),
       ),
-    ),
-    child: Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: ConstrainedBox(constraints: const BoxConstraints.tightFor(width: 120),
-        child: DropdownButton<String>(
-          value: value,
-          icon: const Icon(Icons.arrow_drop_down),
-          isExpanded: true,
-          borderRadius: BorderRadius.circular(10), // Match the container
-          onChanged: onChanged,
-          items: languages
-              .map((lang) => DropdownMenuItem(
-                    value: lang,
-                    child: Text(lang),
-                  ))
-              .toList(),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints.tightFor(width: 120),
+            child: DropdownButton<String>(
+              value: value,
+              icon: const Icon(Icons.arrow_drop_down),
+              isExpanded: true,
+              borderRadius: BorderRadius.circular(10),
+              onChanged: onChanged,
+              items: languages.map((lang) => DropdownMenuItem(value: lang, child: Text(lang))).toList(),
+            ),
+          ),
         ),
       ),
-      ),
-    ),
-  );
-}
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -131,8 +136,6 @@ Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
         child: Column(
           children: [
             const SizedBox(height: 10),
-
-            // Caller info with dynamic timer
             Column(
               children: [
                 const Text(
@@ -146,8 +149,6 @@ Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
               ],
             ),
             const Divider(thickness: 1.5),
-
-            // Dropdown Row
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Row(
@@ -175,56 +176,108 @@ Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
                 ],
               ),
             ),
-
-            // Chat Area
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
                 padding: const EdgeInsets.all(10),
                 itemCount: chatMessages.length,
                 itemBuilder: (context, index) {
+                  final msg = chatMessages[index];
+                  final isUser = msg['isUser'];
                   return Align(
-                    alignment: Alignment.centerRight,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(chatMessages[index]),
+                    alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment:
+                          isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          children: [
+                            if (!isUser)
+                              const CircleAvatar(radius: 12, child: Icon(Icons.person, size: 14)),
+                            Container(
+                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isUser ? Colors.blue[100] : Colors.grey[200],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                msg['text'],
+                                softWrap: true,
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                            if (isUser)
+                              const CircleAvatar(
+                                radius: 12,
+                                backgroundColor: Colors.blue,
+                                child: Icon(Icons.person, size: 14, color: Colors.white),
+                              ),
+                          ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12, left: 12, bottom: 4),
+                          child: Text(
+                            msg['time'],
+                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 },
               ),
             ),
             const Divider(thickness: 1.5),
-
-            // Input row
             Padding(
               padding: const EdgeInsets.all(10.0),
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      onSubmitted: (_) => _sendMessage(),
-                      decoration: InputDecoration(
-                        hintText: "Type your message...",
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 40, maxHeight: 150),
+                      child: TextField(
+                        controller: _textController,
+                        onSubmitted: (_) => _sendMessage(),
+                        minLines: 1,
+                        maxLines: null,
+                        decoration: InputDecoration(
+                          hintText: "Type or Speak your message...",
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.mic),
+                            onPressed: () async {
+                              if (!_sttController.isListening) {
+                                await _sttController.startListening(
+                                  (text) {
+                                    setState(() {
+                                      _spokenText = text;
+                                      _textController.text = text;
+                                      _textController.selection = TextSelection.fromPosition(
+                                        TextPosition(offset: _textController.text.length),
+                                      );
+                                    });
+                                  },
+                                  () {
+                                    debugPrint("Final result: $_spokenText");
+                                  },
+                                  'en-IN',
+                                );
+                              } else {
+                                await _sttController.stop();
+                              }
+                            },
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.mic, size: 26),
-                    onPressed: () {
-                      // TODO: Voice recording logic
-                    },
-                  ),
                   IconButton(
                     icon: const Icon(Icons.send, size: 26),
                     onPressed: _sendMessage,
