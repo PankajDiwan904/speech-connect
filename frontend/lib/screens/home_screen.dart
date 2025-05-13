@@ -2,20 +2,25 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
-  final String callerNameOrNumber;
-
-  const HomeScreen({super.key, this.callerNameOrNumber = "Unknown Caller"});
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final TextEditingController ttsController = TextEditingController();
-  final ScrollController scrollController = ScrollController();
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  String selectedInputLang = "English";
+  String selectedOutputLang = "Hindi";
+
+  final List<String> languages = ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali'];
+
   List<String> chatMessages = [];
 
-  late Timer _timer;
+  // Timer
+  late Timer _callTimer;
   int _seconds = 0;
 
   @override
@@ -25,131 +30,210 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startCallTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
         _seconds++;
       });
     });
   }
 
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
   String _formatDuration(int seconds) {
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+    final mins = (seconds ~/ 60).toString().padLeft(2, '0');
+    final secs = (seconds % 60).toString().padLeft(2, '0');
+    return "$mins:$secs";
   }
 
-  void sendMessage() {
-    final msg = ttsController.text.trim();
-    if (msg.isNotEmpty) {
+  void _sendMessage() {
+    if (_textController.text.trim().isNotEmpty) {
       setState(() {
-        chatMessages.add(msg);
-        ttsController.clear();
+        chatMessages.add(_textController.text.trim());
+        _textController.clear();
       });
 
-      // Auto scroll to bottom
       Future.delayed(const Duration(milliseconds: 100), () {
-        scrollController.jumpTo(scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       });
     }
   }
 
+  void _swapLanguages() {
+    setState(() {
+      final temp = selectedInputLang;
+      selectedInputLang = selectedOutputLang;
+      selectedOutputLang = temp;
+    });
+  }
+
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(80),
-        child: Container(
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: Colors.grey,
-                width: 0.5,
-              ),
-            ),
+  void dispose() {
+    _textController.dispose();
+    _scrollController.dispose();
+    _callTimer.cancel();
+    super.dispose();
+  }
+
+Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
+  return Theme(
+    data: Theme.of(context).copyWith(
+      canvasColor: Colors.white,
+      dropdownMenuTheme: DropdownMenuThemeData(
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-          padding: const EdgeInsets.only(top: 20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                widget.callerNameOrNumber,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _formatDuration(_seconds),
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black54,
-                ),
-              ),
-            ],
+        ),
+        menuStyle: MenuStyle(
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: scrollController,
-              padding: const EdgeInsets.all(12),
-              itemCount: chatMessages.length,
-              itemBuilder: (context, index) {
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 10, horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade100,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      chatMessages[index],
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
+    ),
+    child: Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: ConstrainedBox(constraints: const BoxConstraints.tightFor(width: 120),
+        child: DropdownButton<String>(
+          value: value,
+          icon: const Icon(Icons.arrow_drop_down),
+          isExpanded: true,
+          borderRadius: BorderRadius.circular(10), // Match the container
+          onChanged: onChanged,
+          items: languages
+              .map((lang) => DropdownMenuItem(
+                    value: lang,
+                    child: Text(lang),
+                  ))
+              .toList(),
+        ),
+      ),
+      ),
+    ),
+  );
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+
+            // Caller info with dynamic timer
+            Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: ttsController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onSubmitted: (_) => sendMessage(),
-                  ),
+                const Text(
+                  "Caller Name / Number",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: sendMessage,
-                  icon: const Icon(Icons.send),
-                  color: Colors.deepPurple,
-                  iconSize: 28,
+                Text(
+                  _formatDuration(_seconds),
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
                 ),
               ],
             ),
-          ),
-        ],
+            const Divider(thickness: 1.5),
+
+            // Dropdown Row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildDropdown(selectedInputLang, (value) {
+                      if (value != null) {
+                        setState(() => selectedInputLang = value);
+                      }
+                    }),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz, size: 28),
+                    onPressed: _swapLanguages,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildDropdown(selectedOutputLang, (value) {
+                      if (value != null) {
+                        setState(() => selectedOutputLang = value);
+                      }
+                    }),
+                  ),
+                ],
+              ),
+            ),
+
+            // Chat Area
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(10),
+                itemCount: chatMessages.length,
+                itemBuilder: (context, index) {
+                  return Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(chatMessages[index]),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const Divider(thickness: 1.5),
+
+            // Input row
+            Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      onSubmitted: (_) => _sendMessage(),
+                      decoration: InputDecoration(
+                        hintText: "Type your message...",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.mic, size: 26),
+                    onPressed: () {
+                      // TODO: Voice recording logic
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.send, size: 26),
+                    onPressed: _sendMessage,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
