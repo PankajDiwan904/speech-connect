@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/controllers/stt_controller.dart';
+import 'package:frontend/controllers/tts_controller.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final STTController _sttController = STTController();
+  final TTSController _ttsController = TTSController();
   String _spokenText = '';
 
   String selectedInputLang = "English";
@@ -36,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _startCallTimer();
     _sttController.initialize();
+    _ttsController.initialize();
   }
 
   void _startCallTimer() {
@@ -282,6 +285,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: const Icon(Icons.send, size: 26),
                     onPressed: _sendMessage,
                   ),
+                  IconButton(
+                      icon: Icon(Icons.volume_up),
+                      onPressed: () {
+                          if (chatMessages.isNotEmpty) {
+                            final lastMessage = chatMessages.last;
+                            _ttsController.speak(lastMessage['text']);
+                          } else {
+                            debugPrint("No message to speak.");
+                          }
+                        },
+
+                    ),
+
                 ],
               ),
             ),
