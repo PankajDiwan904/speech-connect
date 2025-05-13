@@ -1,61 +1,43 @@
-from flask import Flask, request, jsonify
-from vosk import Model, KaldiRecognizer
-from pydub import AudioSegment
 import os
 import wave
 import json
+from vosk import Model, KaldiRecognizer
 
-app = Flask(__name__)
+# ---- Change this path depending on the language ----
+model_path = "vosk_models/en"  # or vosk-english / vosk-telugu
 
-# Language to model mapping
-MODEL_PATHS = {
-    "en": "vosk_models/en",
-    "hi": "vosk_models/hi",
-    "te": "vosk_models/te"
-}
+# Load the model
+if not os.path.exists(model_path):
+    print("Model path not found!")
+    exit(1)
 
-# Load all models in advance
-models = {lang: Model(path) for lang, path in MODEL_PATHS.items()}
+model = Model(model_path)
 
+# Open your audio file (must be WAV, mono, 16kHz)
+wf = wave.open("converted.wav", "rb")
 
-@app.route("/stt", methods=["POST"])
-def speech_to_text():
-    if 'audio' not in request.files or 'lang' not in request.form:
-        return jsonify({"error": "Missing audio or language"}), 400
+# Check audio format
+if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() != 16000:
+    print("Please convert the audio to mono WAV with 16kHz sampling rate.")
+    exit(1)
 
-    lang = request.form['lang']
-    audio_file = request.files['audio']
+rec = KaldiRecognizer(model, wf.getframerate())
+rec.SetWords(True)
 
-    if lang not in models:
-        return jsonify({"error": "Unsupported language"}), 400
+# Run the recognizer
+results = []
+while True:
+    data = wf.readframes(4000)
+    if len(data) == 0:
+        break
+    if rec.AcceptWaveform(data):
+        res = json.loads(rec.Result())
+        results.append(res.get("text", ""))
 
-    # Save uploaded audio temporarily
-    audio_path = "temp.wav"
-    audio_file.save(audio_path)
+# Final partial result
+final_res = json.loads(rec.FinalResult())
+results.append(final_res.get("text", ""))
 
-    # Convert to correct format
-    sound = AudioSegment.from_file(audio_path)
-    sound = sound.set_channels(1).set_frame_rate(16000)
-    sound.export(audio_path, format="wav")
-
-    # Transcribe with Vosk
-    wf = wave.open(audio_path, "rb")
-    rec = KaldiRecognizer(models[lang], wf.getframerate())
-
-    result_text = ""
-    while True:
-        data = wf.readframes(4000)
-        if len(data) == 0:
-            break
-        if rec.AcceptWaveform(data):
-            result = json.loads(rec.Result())
-            result_text += result.get("text", "") + " "
-
-    final_result = json.loads(rec.FinalResult())
-    result_text += final_result.get("text", "")
-
-    return jsonify({"text": result_text.strip()})
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# Print final output
+final_text = " ".join([r for r in results if r])
+print("🔊 Recognized Text:", final_text)
