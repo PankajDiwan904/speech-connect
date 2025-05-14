@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/controllers/stt_controller.dart';
 import 'package:frontend/controllers/tts_controller.dart';
+import 'package:frontend/controllers/translation_controller.dart';
 import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
@@ -15,18 +16,21 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
   final STTController _sttController = STTController();
   final TTSController _ttsController = TTSController();
-  String _spokenText = '';
+  final TranslationController _translationController = TranslationController();
 
+  String _spokenText = '';
+  String _translatedText = '';
   String selectedInputLang = "English";
   String selectedOutputLang = "Hindi";
 
-  final List<String> languages = [
-    'English',
-    'Hindi',
-    'Tamil',
-    'Telugu',
-    'Bengali',
-  ];
+  final List<String> languages = ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali'];
+  final Map<String, String> languageCodes = {
+    'English': 'en',
+    'Hindi': 'hi',
+    'Tamil': 'ta',
+    'Telugu': 'te',
+    'Bengali': 'bn',
+  };
 
   List<Map<String, dynamic>> chatMessages = []; // {text: '', isUser: true, time: ''}
 
@@ -84,6 +88,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _translateText() async {
+    if (_textController.text.trim().isEmpty) return;
+
+    final translated = await _translationController.translateText(
+      _textController.text,
+      languageCodes[selectedInputLang]!,
+      languageCodes[selectedOutputLang]!,
+    );
+
+    setState(() {
+      _translatedText = translated;
+    });
+
+    chatMessages.add({
+      'text': translated,
+      'isUser': false,
+      'time': TimeOfDay.now().format(context),
+    });
+  }
+
   @override
   void dispose() {
     _textController.dispose();
@@ -96,16 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Theme(
       data: Theme.of(context).copyWith(
         canvasColor: Colors.white,
-        dropdownMenuTheme: DropdownMenuThemeData(
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          menuStyle: MenuStyle(
-            shape: WidgetStatePropertyAll(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ),
       ),
       child: Container(
         height: 40,
@@ -115,16 +129,14 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(10),
         ),
         child: DropdownButtonHideUnderline(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints.tightFor(width: 120),
-            child: DropdownButton<String>(
-              value: value,
-              icon: const Icon(Icons.arrow_drop_down),
-              isExpanded: true,
-              borderRadius: BorderRadius.circular(10),
-              onChanged: onChanged,
-              items: languages.map((lang) => DropdownMenuItem(value: lang, child: Text(lang))).toList(),
-            ),
+          child: DropdownButton<String>(
+            value: value,
+            icon: const Icon(Icons.arrow_drop_down),
+            isExpanded: true,
+            onChanged: onChanged,
+            items: languages
+                .map((lang) => DropdownMenuItem(value: lang, child: Text(lang)))
+                .toList(),
           ),
         ),
       ),
@@ -156,26 +168,15 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: Row(
                 children: [
-                  Expanded(
-                    child: _buildDropdown(selectedInputLang, (value) {
-                      if (value != null) {
-                        setState(() => selectedInputLang = value);
-                      }
-                    }),
-                  ),
+                  Expanded(child: _buildDropdown(selectedInputLang, (value) {
+                    if (value != null) setState(() => selectedInputLang = value);
+                  })),
                   const SizedBox(width: 6),
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz, size: 28),
-                    onPressed: _swapLanguages,
-                  ),
+                  IconButton(icon: const Icon(Icons.swap_horiz), onPressed: _swapLanguages),
                   const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildDropdown(selectedOutputLang, (value) {
-                      if (value != null) {
-                        setState(() => selectedOutputLang = value);
-                      }
-                    }),
-                  ),
+                  Expanded(child: _buildDropdown(selectedOutputLang, (value) {
+                    if (value != null) setState(() => selectedOutputLang = value);
+                  })),
                 ],
               ),
             ),
@@ -194,7 +195,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          mainAxisAlignment:
+                              isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                           children: [
                             if (!isUser)
                               const CircleAvatar(radius: 12, child: Icon(Icons.person, size: 14)),
@@ -206,11 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: isUser ? Colors.blue[100] : Colors.grey[200],
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                msg['text'],
-                                softWrap: true,
-                                style: const TextStyle(fontSize: 16),
-                              ),
+                              child: Text(msg['text'], style: const TextStyle(fontSize: 16)),
                             ),
                             if (isUser)
                               const CircleAvatar(
@@ -235,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(thickness: 1.5),
             Padding(
-              padding: const EdgeInsets.all(10.0),
+              padding: const EdgeInsets.all(10),
               child: Row(
                 children: [
                   Expanded(
@@ -262,45 +260,40 @@ class _HomeScreenState extends State<HomeScreen> {
                                       );
                                     });
                                   },
-                                  () {
-                                    debugPrint("Final result: $_spokenText");
-                                  },
-                                  'en-IN',
+                                  () => debugPrint("Final STT: $_spokenText"),
+                                  '${languageCodes[selectedInputLang]}-IN',
                                 );
                               } else {
                                 await _sttController.stop();
                               }
                             },
                           ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
+                  IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
                   IconButton(
-                    icon: const Icon(Icons.send, size: 26),
-                    onPressed: _sendMessage,
+                    icon: const Icon(Icons.volume_up),
+                    onPressed: () {
+                      if (chatMessages.isNotEmpty) {
+                        _ttsController.speak(chatMessages.last['text']);
+                      }
+                    },
                   ),
-                  IconButton(
-                      icon: Icon(Icons.volume_up),
-                      onPressed: () {
-                          if (chatMessages.isNotEmpty) {
-                            final lastMessage = chatMessages.last;
-                            _ttsController.speak(lastMessage['text']);
-                          } else {
-                            debugPrint("No message to speak.");
-                          }
-                        },
-
-                    ),
-
+                  IconButton(icon: const Icon(Icons.translate), onPressed: _translateText),
                 ],
               ),
             ),
+            if (_translatedText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text("Translated: $_translatedText"),
+              ),
           ],
         ),
       ),
