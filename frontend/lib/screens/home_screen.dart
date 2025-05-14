@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:frontend/controllers/stt_controller.dart';
 import 'package:frontend/controllers/tts_controller.dart';
 import 'package:frontend/controllers/translation_controller.dart';
@@ -19,12 +20,10 @@ class _HomeScreenState extends State<HomeScreen> {
   final TranslationController _translationController = TranslationController();
 
   String _spokenText = '';
-  String _translatedText = '';
-  String selectedInputLang = "English";
-  String selectedOutputLang = "Hindi";
+  String selectedInputLang = "en";
+  String selectedOutputLang = "hi";
 
-  final List<String> languages = ['English', 'Hindi', 'Tamil', 'Telugu', 'Bengali'];
-  final Map<String, String> languageCodes = {
+  final Map<String, String> languageMap = {
     'English': 'en',
     'Hindi': 'hi',
     'Tamil': 'ta',
@@ -32,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
     'Bengali': 'bn',
   };
 
-  List<Map<String, dynamic>> chatMessages = []; // {text: '', isUser: true, time: ''}
+  List<Map<String, dynamic>> chatMessages = [];
 
   late Timer _callTimer;
   int _seconds = 0;
@@ -47,9 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _startCallTimer() {
     _callTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _seconds++;
-      });
+      setState(() => _seconds++);
     });
   }
 
@@ -60,52 +57,53 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _sendMessage() {
-    if (_textController.text.trim().isNotEmpty) {
-      setState(() {
-        chatMessages.add({
-          'text': _textController.text.trim(),
-          'isUser': true,
-          'time': TimeOfDay.now().format(context),
-        });
-        _textController.clear();
-      });
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
 
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+    setState(() {
+      chatMessages.add({
+        'text': text,
+        'isUser': true,
+        'time': TimeOfDay.now().format(context),
       });
-    }
+    });
+    _scrollToBottom();
+    _textController.clear();
   }
 
-  void _swapLanguages() {
+  void _speakAndSend() {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    _ttsController.speak(text, langCode: selectedOutputLang);
     setState(() {
-      final temp = selectedInputLang;
-      selectedInputLang = selectedOutputLang;
-      selectedOutputLang = temp;
+      chatMessages.add({
+        'text': text,
+        'isUser': true,
+        'time': TimeOfDay.now().format(context),
+      });
+    });
+    _scrollToBottom();
+    _textController.clear();
+  }
+
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     });
   }
 
-  void _translateText() async {
-    if (_textController.text.trim().isEmpty) return;
-
+  void _translateAndReplace(int index) async {
+    final original = chatMessages[index]['text'];
     final translated = await _translationController.translateText(
-      _textController.text,
-      languageCodes[selectedInputLang]!,
-      languageCodes[selectedOutputLang]!,
+      original,
+      selectedInputLang,
+      selectedOutputLang,
     );
-
-    setState(() {
-      _translatedText = translated;
-    });
-
-    chatMessages.add({
-      'text': translated,
-      'isUser': false,
-      'time': TimeOfDay.now().format(context),
-    });
+    setState(() => chatMessages[index]['text'] = translated);
   }
 
   @override
@@ -116,28 +114,28 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Widget _buildDropdown(String value, ValueChanged<String?> onChanged) {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        canvasColor: Colors.white,
+  Widget _buildDropdown(String langCode, ValueChanged<String?> onChanged) {
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Container(
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: value,
-            icon: const Icon(Icons.arrow_drop_down),
-            isExpanded: true,
-            onChanged: onChanged,
-            items: languages
-                .map((lang) => DropdownMenuItem(value: lang, child: Text(lang)))
-                .toList(),
-          ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: languageMap.entries.firstWhere((e) => e.value == langCode).key,
+          icon: const Icon(Icons.arrow_drop_down),
+          isExpanded: true,
+          onChanged: (newLangName) {
+            if (newLangName != null) onChanged(languageMap[newLangName]);
+          },
+          items: languageMap.keys.map((langName) {
+            return DropdownMenuItem<String>(
+              value: langName,
+              child: Text(langName),
+            );
+          }).toList(),
         ),
       ),
     );
@@ -153,30 +151,35 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 10),
             Column(
               children: [
-                const Text(
-                  "Caller Name / Number",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  _formatDuration(_seconds),
-                  style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
+                const Text("Caller Name / Number",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(_formatDuration(_seconds),
+                    style: const TextStyle(fontSize: 16, color: Colors.grey)),
               ],
             ),
             const Divider(thickness: 1.5),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
                 children: [
-                  Expanded(child: _buildDropdown(selectedInputLang, (value) {
-                    if (value != null) setState(() => selectedInputLang = value);
-                  })),
-                  const SizedBox(width: 6),
-                  IconButton(icon: const Icon(Icons.swap_horiz), onPressed: _swapLanguages),
-                  const SizedBox(width: 6),
-                  Expanded(child: _buildDropdown(selectedOutputLang, (value) {
-                    if (value != null) setState(() => selectedOutputLang = value);
-                  })),
+                  Expanded(
+                    child: _buildDropdown(selectedInputLang,
+                        (value) => setState(() => selectedInputLang = value!)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz),
+                    onPressed: () {
+                      setState(() {
+                        final temp = selectedInputLang;
+                        selectedInputLang = selectedOutputLang;
+                        selectedOutputLang = temp;
+                      });
+                    },
+                  ),
+                  Expanded(
+                    child: _buildDropdown(selectedOutputLang,
+                        (value) => setState(() => selectedOutputLang = value!)),
+                  ),
                 ],
               ),
             ),
@@ -188,44 +191,50 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (context, index) {
                   final msg = chatMessages[index];
                   final isUser = msg['isUser'];
-                  return Align(
-                    alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment:
-                          isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment:
-                              isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-                          children: [
-                            if (!isUser)
-                              const CircleAvatar(radius: 12, child: Icon(Icons.person, size: 14)),
-                            Container(
-                              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                              margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: isUser ? Colors.blue[100] : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(msg['text'], style: const TextStyle(fontSize: 16)),
+                  return GestureDetector(
+                    onTap: () async {
+                      final result = await showMenu(
+                        context: context,
+                        position: RelativeRect.fromLTRB(100, 100, 0, 0),
+                        items: const [
+                          PopupMenuItem(value: 'copy', child: Text('Copy')),
+                          PopupMenuItem(value: 'translate', child: Text('Translate')),
+                        ],
+                      );
+                      if (result == 'copy') {
+                        Clipboard.setData(ClipboardData(text: msg['text']));
+                      } else if (result == 'translate') {
+                        _translateAndReplace(index);
+                      }
+                    },
+                    child: Align(
+                      alignment:
+                          isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Column(
+                        crossAxisAlignment:
+                            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            constraints: BoxConstraints(
+                                maxWidth: MediaQuery.of(context).size.width * 0.75),
+                            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isUser ? Colors.blue[100] : Colors.grey[200],
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            if (isUser)
-                              const CircleAvatar(
-                                radius: 12,
-                                backgroundColor: Colors.blue,
-                                child: Icon(Icons.person, size: 14, color: Colors.white),
-                              ),
-                          ],
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(right: 12, left: 12, bottom: 4),
-                          child: Text(
-                            msg['time'],
-                            style: const TextStyle(fontSize: 10, color: Colors.grey),
+                            child: Text(msg['text'],
+                                style: const TextStyle(fontSize: 16)),
                           ),
-                        ),
-                      ],
+                          Padding(
+                            padding:
+                                const EdgeInsets.only(right: 12, left: 12, bottom: 4),
+                            child: Text(msg['time'],
+                                style: const TextStyle(
+                                    fontSize: 10, color: Colors.grey)),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -233,67 +242,55 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(thickness: 1.5),
             Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(10.0),
               child: Row(
                 children: [
                   Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 40, maxHeight: 150),
-                      child: TextField(
-                        controller: _textController,
-                        onSubmitted: (_) => _sendMessage(),
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          hintText: "Type or Speak your message...",
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.mic),
-                            onPressed: () async {
-                              if (!_sttController.isListening) {
-                                await _sttController.startListening(
-                                  (text) {
-                                    setState(() {
-                                      _spokenText = text;
-                                      _textController.text = text;
-                                      _textController.selection = TextSelection.fromPosition(
-                                        TextPosition(offset: _textController.text.length),
-                                      );
-                                    });
-                                  },
-                                  () => debugPrint("Final STT: $_spokenText"),
-                                  '${languageCodes[selectedInputLang]}-IN',
-                                );
-                              } else {
-                                await _sttController.stop();
-                              }
-                            },
-                          ),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          contentPadding:
-                              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    child: TextField(
+                      controller: _textController,
+                      minLines: 1,
+                      maxLines: null,
+                      decoration: InputDecoration(
+                        hintText: "Type or Speak your message...",
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
                   IconButton(
-                    icon: const Icon(Icons.volume_up),
-                    onPressed: () {
-                      if (chatMessages.isNotEmpty) {
-                        _ttsController.speak(chatMessages.last['text']);
+                    icon: Icon(Icons.mic,
+                        color: _sttController.isListening ? Colors.red : Colors.black),
+                    onPressed: () async {
+                      if (!_sttController.isListening) {
+                        final langCode = '$selectedInputLang-IN';
+                        await _sttController.startListening(
+                          (text) {
+                            setState(() {
+                              _spokenText = text;
+                              _textController.text = text;
+                              _textController.selection = TextSelection.fromPosition(
+                                  TextPosition(offset: text.length));
+                            });
+                          },
+                          () => debugPrint("Final: $_spokenText"),
+                          langCode,
+                        );
+                      } else {
+                        await _sttController.stop();
                       }
                     },
                   ),
-                  IconButton(icon: const Icon(Icons.translate), onPressed: _translateText),
+                  IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
+                  IconButton(
+                      icon: const Icon(Icons.record_voice_over),
+                      onPressed: _speakAndSend),
                 ],
               ),
             ),
-            if (_translatedText.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text("Translated: $_translatedText"),
-              ),
           ],
         ),
       ),
